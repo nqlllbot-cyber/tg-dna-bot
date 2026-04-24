@@ -1112,9 +1112,16 @@ async def check_sub(call: CallbackQuery):
 
 async def main():
     print("✅ Bot Started - Pro Version v4.0 with Encryption")
-    scheduler.add_job(send_daily_backup, 'cron', hour=0, minute=0)
+    scheduler.add_job(send_daily_backup, 'cron', hour=0, minute=0, timezone="Africa/Cairo")
     scheduler.start()
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        scheduler.shutdown()
+        await bot.session.close()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Bot stopped")
