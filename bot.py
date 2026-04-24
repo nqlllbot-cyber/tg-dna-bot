@@ -17,15 +17,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.exceptions import TelegramBadRequest
-
-====== المتغيرات - عدل دول ======
+    
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
 DEVELOPER_USERNAME = "devazf"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
-SUPPORT_GROUP = "YourGroup"
+SUPPORT_GROUP = "vaazef"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
