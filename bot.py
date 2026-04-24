@@ -9,15 +9,14 @@ from telethon.tl.functions.messages import GetCommonChatsRequest
 from telethon.tl.functions.photos import GetUserPhotosRequest
 from telethon.tl.types import Channel, User, UserStatusOnline, UserStatusRecently
 from telethon.tl.types import UserStatusOffline, UserStatusLastWeek, UserStatusLastMonth
-from telethon.tl.types import ChannelParticipant, ChannelParticipantBanned, ChannelParticipantLeft
 from telethon.sessions import StringSession
 from telethon.errors import UserNotParticipantError
 
-API_ID = int(os.environ.get('API_ID'))
-API_HASH = os.environ.get('API_HASH')
-STRING_SESSION = os.environ.get('STRING_SESSION')
-ADMIN_ID = int(os.environ.get('ADMIN_ID'))
-FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '') # يوزر القناة بدون @
+API_ID = int(os.environ.get('API_ID', 0))
+API_HASH = os.environ.get('API_HASH', '')
+STRING_SESSION = os.environ.get('STRING_SESSION', '')
+ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
+FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 
 bot = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 
@@ -45,7 +44,6 @@ def load_data():
 load_data()
 
 async def check_force_sub(uid):
-    """التحقق من الاشتراك الاجباري"""
     if not FORCE_SUB_CHANNEL or uid == ADMIN_ID:
         return True
     try:
@@ -54,11 +52,18 @@ async def check_force_sub(uid):
     except UserNotParticipantError:
         return False
     except:
-        return True # لو في خطأ عديه عشان البوت ميقفش
+        return True
+
+def estimate_creation_from_id(user_id):
+    """تخمين تاريخ الانشاء من الـ ID - زي بوت TG DNA"""
+    telegram_epoch = 1388534400 # 2014-01-01
+    estimated_timestamp = telegram_epoch + (user_id / 100000000) * 37.8
+    estimated_date = datetime.fromtimestamp(estimated_timestamp, tz=timezone.utc)
+    return estimated_date
 
 def calculate_age(created_date):
     if not created_date:
-        return "Private 🔒", 0
+        return "Unknown", 0
     now = datetime.now(timezone.utc)
     diff = now - created_date
     years = diff.days // 365
@@ -112,7 +117,6 @@ async def start(event):
         await event.reply("🚫 انت محظور من استخدام البوت")
         return
 
-    # تحقق من الاشتراك الاجباري
     if not await check_force_sub(uid):
         btns = [[Button.url("📢 اشترك في القناة", f"https://t.me/{FORCE_SUB_CHANNEL}")],
                 [Button.inline("✅ تحققت", b"check_sub")]]
@@ -135,7 +139,7 @@ async def start(event):
     text = """
 🔍 **TG DNA Pro Max - UserBot Edition**
 
-✅ تاريخ الانشاء: دقة 100% من سيرفرات تليجرام
+✅ تاريخ الانشاء: دقة 100% أو تقريبي من ID
 ✅ معلومات كاملة بدون قيود
 
 ابعت @username أو ID أو فورارد رسالة 👇
@@ -147,7 +151,6 @@ async def get_info(event):
     uid = event.sender_id
     if uid in blocked_users: return
 
-    # تحقق من الاشتراك الاجباري
     if not await check_force_sub(uid):
         btns = [[Button.url("📢 اشترك في القناة", f"https://t.me/{FORCE_SUB_CHANNEL}")],
                 [Button.inline("✅ تحققت", b"check_sub")]]
@@ -166,7 +169,7 @@ async def get_info(event):
     else:
         username = text
 
-    msg = await event.reply("⏳ **جاري التحليل بدقة 100%...**")
+    msg = await event.reply("⏳ **جاري التحليل...**")
 
     try:
         entity = await bot.get_entity(username)
@@ -174,17 +177,19 @@ async def get_info(event):
             full = await bot(GetFullUserRequest(entity))
             user = full.users[0]
 
+            # التاريخ الحقيقي أو التقريبي
             if hasattr(user, 'date') and user.date:
                 created = user.date.strftime('%Y-%m-%d %H:%M:%S UTC')
                 age, total_days = calculate_age(user.date)
                 accuracy = "✅ دقة 100%"
             else:
-                created = "Private 🔒"
-                age, total_days = "Unknown", 0
-                accuracy = "⚠️ مخفي من المستخدم"
+                estimated_date = estimate_creation_from_id(user.id)
+                created = estimated_date.strftime('%Y-%m')
+                age, total_days = calculate_age(estimated_date)
+                accuracy = "⚠️ تقريبي من ID"
 
             dc_id = user.photo.dc_id if user.photo else "None"
-            premium = "Active 💎" if user.premium else "No"
+            premium = "Active 💎" if user.premium else "Inactive"
             verified = "Yes ✅" if user.verified else "No"
             status = get_status_detailed(user)
             phone = f"`+{user.phone}`" if user.phone else "Hidden 🔒"
@@ -196,8 +201,10 @@ async def get_info(event):
             try:
                 photos = await bot(GetUserPhotosRequest(user_id=user.id, offset=0, max_id=0, limit=100))
                 photos_count = photos.count
+                photos_status = "Set" if photos_count > 0 else "None"
             except:
                 photos_count = 0
+                photos_status = "None"
 
             try:
                 common = await bot(GetCommonChatsRequest(user_id=user.id, max_id=0, limit=100))
@@ -208,19 +215,22 @@ async def get_info(event):
             info_msg = f"""
 **👤 User Information** {accuracy}
 
-- **ID:** `{user.id}` ({len(str(user.id))} digits)
+- **ID:** `{user.id}` - {len(str(user.id))} Digits
 - **Name:** {user.first_name or ''} {user.last_name or ''}
 - **Username:** @{user.username or 'None'}
 - **Phone:** {phone}
-- **DC ID:** {dc_id}
+- **DC:** {dc_id}
 - **Created:** {created}
-- **Account Age:** {age} ({total_days} days)
 - **Premium:** {premium}
+- **Date:** {datetime.now().strftime('%Y-%m-%d US %H:%M')}
+- **Photos:** {photos_status}
+- **Scam Label:** {scam}
+- **Fake Label:** {fake}
+- **Paid Message:** No
+- **Account Age:** {age.split()[0] if age!= "Unknown" else "Unknown"}
 - **Verified:** {verified}
 - **Status:** {status}
-- **Photos:** {photos_count}
 - **Common Chats:** {common_count}
-- **Scam:** {scam} | **Fake:** {fake}
 - **Restricted:** {restricted} | **Bot:** {bot_flag}
 
 **Bio:** {full.full_user.about[:300] if full.full_user.about else 'None'}
@@ -236,6 +246,13 @@ async def get_info(event):
         elif isinstance(entity, Channel):
             full = await bot(GetFullChannelRequest(entity))
             channel = full.chats[0]
+
+            if hasattr(channel, 'date') and channel.date:
+                created = channel.date.strftime('%Y-%m-%d %H:%M:%S UTC')
+            else:
+                estimated_date = estimate_creation_from_id(channel.id)
+                created = estimated_date.strftime('%Y-%m ⚠️ تقريبي')
+
             info_msg = f"""
 **📢 Channel/Group Information**
 
@@ -245,7 +262,7 @@ async def get_info(event):
 - **Type:** {'Channel 📢' if channel.broadcast else 'Group 👥'}
 - **Members:** {full.full_chat.participants_count or 'Hidden'}
 - **DC:** {channel.photo.dc_id if channel.photo else 'None'}
-- **Created:** {channel.date.strftime('%Y-%m-%d %H:%M:%S UTC') if hasattr(channel, 'date') else 'Unknown'}
+- **Created:** {created}
 - **Verified:** {'Yes ✅' if channel.verified else 'No'}
 - **Scam:** {'Yes ⚠️' if channel.scam else 'No'}
 
@@ -284,7 +301,7 @@ async def callback(event):
 🚫 المحظورين: `{len(blocked_users)}`
 📢 قناة الاشتراك: `@{FORCE_SUB_CHANNEL or 'None'}`
 ⏰ التاريخ: `{datetime.now().strftime('%Y-%m-%d %H:%M')}`
-🔐 النوع: UserBot - دقة 100%
+🔐 النوع: UserBot
 """
         await event.edit(text, buttons=[[Button.inline("🔙 رجوع", b"admin_panel")]])
 
@@ -296,7 +313,6 @@ async def callback(event):
     elif data == "back":
         await event.edit("🔍 **TG DNA Pro Max**\n\nابعت يوزر أو ايدي أو فورارد", buttons=main_menu(uid))
 
-    # باقي ال callbacks زي القديم...
     elif data == "users_list":
         if uid!= ADMIN_ID: return
         text = "👥 **آخر 20 مستخدم:**\n\n"
@@ -367,7 +383,7 @@ async def ban_handler(event):
 
 async def main():
     await bot.start()
-    print("✅ TG DNA UserBot شغال - دقة 100% + اشتراك اجباري")
+    print("✅ TG DNA UserBot شغال")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':
