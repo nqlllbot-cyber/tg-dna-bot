@@ -1,24 +1,18 @@
 import asyncio
 import os
 import json
-from datetime import datetime, timezone
-from telethon import TelegramClient, events, Button
-from telethon.tl.functions.users import GetFullUserRequest
-from telethon.tl.functions.channels import GetFullChannelRequest, GetAdminedPublicChannelsRequest, GetParticipantRequest
-from telethon.tl.functions.messages import GetCommonChatsRequest
-from telethon.tl.functions.photos import GetUserPhotosRequest
-from telethon.tl.types import Channel, User, UserStatusOnline, UserStatusRecently
-from telethon.tl.types import UserStatusOffline, UserStatusLastWeek, UserStatusLastMonth
-from telethon.sessions import StringSession
-from telethon.errors import UserNotParticipantError
+from datetime import datetime, timezone, timedelta
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-API_ID = int(os.environ.get('API_ID', 0))
-API_HASH = os.environ.get('API_HASH', '')
-STRING_SESSION = os.environ.get('STRING_SESSION', '')
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 
-bot = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
 users_db = {}
 stats = {"total_requests": 0, "today_requests": 0, "last_reset": str(datetime.now().date())}
@@ -43,125 +37,140 @@ def load_data():
 
 load_data()
 
-async def check_force_sub(uid):
-    if not FORCE_SUB_CHANNEL or uid == ADMIN_ID:
+async def check_force_sub(user_id):
+    if not FORCE_SUB_CHANNEL or user_id == ADMIN_ID:
         return True
     try:
-        await bot(GetParticipantRequest(channel=FORCE_SUB_CHANNEL, participant=uid))
-        return True
-    except UserNotParticipantError:
-        return False
+        member = await bot.get_chat_member(f"@{FORCE_SUB_CHANNEL}", user_id)
+        return member.status not in ['left', 'kicked']
     except:
         return True
 
 def estimate_creation_from_id(user_id):
-    """تخمين تاريخ الانشاء من الـ ID - زي بوت TG DNA"""
-    telegram_epoch = 1388534400 # 2014-01-01
-    estimated_timestamp = telegram_epoch + (user_id / 100000000) * 37.8
-    estimated_date = datetime.fromtimestamp(estimated_timestamp, tz=timezone.utc)
+    """تخمين من الـ ID - زي TG DNA"""
+    if user_id < 100000000: # 2013
+        base_date = datetime(2013, 8, 1, tzinfo=timezone.utc)
+        offset = user_id / 1000000
+    elif user_id < 500000000: # 2014-2016
+        base_date = datetime(2014, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 100000000) / 2000000
+    elif user_id < 1000000000: # 2016-2018
+        base_date = datetime(2016, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 500000000) / 3000000
+    elif user_id < 2000000000: # 2018-2021
+        base_date = datetime(2018, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 1000000000) / 4000000
+    elif user_id < 5000000000: # 2021-2023
+        base_date = datetime(2021, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 2000000000) / 8000000
+    elif user_id < 7000000000: # 2023-2024
+        base_date = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 5000000000) / 10000000
+    elif user_id < 7500000000: # 2024
+        base_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 7000000000) / 10000000
+    elif user_id < 8000000000: # 2024-2025
+        base_date = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        offset = (user_id - 7500000000) / 10000000
+    else: # 2025+
+        base_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        offset = (user_id - 8000000000) / 10000000
+
+    estimated_date = base_date + timedelta(days=offset * 30)
     return estimated_date
 
 def calculate_age(created_date):
-    if not created_date:
-        return "Unknown", 0
     now = datetime.now(timezone.utc)
     diff = now - created_date
     years = diff.days // 365
     months = (diff.days % 365) // 30
     days = (diff.days % 365) % 30
-    hours = diff.seconds // 3600
-    total_days = diff.days
     if years > 0:
-        return f"{years}y {months}m {days}d {hours}h", total_days
+        return f"{years}y {months}m {days}d"
     elif months > 0:
-        return f"{months}m {days}d {hours}h", total_days
+        return f"{months}m {days}d"
     else:
-        return f"{days}d {hours}h", total_days
+        return f"{days}d"
 
 def main_menu(uid):
-    buttons = [
-        [Button.inline("👤 User Info", b"user"), Button.inline("📢 Channel/Group", b"channel")],
-        [Button.inline("📦 Owner Groups", b"og"), Button.inline("📢 Owner Channels", b"oc")],
-        [Button.inline("🔗 Common Chats", b"common"), Button.inline("📸 Photos", b"photos")]
-    ]
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="👤 User Info", callback_data="user"),
+        InlineKeyboardButton(text="📢 Channel/Group", callback_data="channel")
+    )
     if uid == ADMIN_ID:
-        buttons.append([Button.inline("⚙️ Developer Panel", b"admin_panel")])
-    return buttons
+        builder.row(InlineKeyboardButton(text="⚙️ Developer Panel", callback_data="admin_panel"))
+    return builder.as_markup()
 
 def admin_panel_menu():
-    return [
-        [Button.inline("📊 الاحصائيات", b"stats"), Button.inline("📢 رسالة جماعية", b"broadcast")],
-        [Button.inline("👥 المستخدمين", b"users_list"), Button.inline("🚫 حظر/فك حظر", b"ban")],
-        [Button.inline("📢 تغيير قناة الاشتراك", b"change_channel"), Button.inline("♻️ ريستارت", b"restart")],
-        [Button.inline("🔙 رجوع", b"back")]
-    ]
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📊 الاحصائيات", callback_data="stats"),
+        InlineKeyboardButton(text="📢 رسالة جماعية", callback_data="broadcast")
+    )
+    builder.row(
+        InlineKeyboardButton(text="👥 المستخدمين", callback_data="users_list"),
+        InlineKeyboardButton(text="🚫 حظر/فك حظر", callback_data="ban")
+    )
+    builder.row(InlineKeyboardButton(text="🔙 رجوع", callback_data="back"))
+    return builder.as_markup()
 
-def get_status_detailed(user):
-    if isinstance(user.status, UserStatusOnline):
-        return "Online 🟢"
-    elif isinstance(user.status, UserStatusRecently):
-        return "Recently 🟡"
-    elif isinstance(user.status, UserStatusLastWeek):
-        return "Last week 🟠"
-    elif isinstance(user.status, UserStatusLastMonth):
-        return "Last month 🔴"
-    elif isinstance(user.status, UserStatusOffline):
-        return f"Offline ⚫ {user.status.was_online.strftime('%Y-%m-%d %H:%M')}"
-    else:
-        return "Long ago ⚫"
-
-@bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    uid = event.sender_id
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    uid = message.from_user.id
     if uid in blocked_users:
-        await event.reply("🚫 انت محظور من استخدام البوت")
+        await message.reply("🚫 انت محظور من استخدام البوت")
         return
 
     if not await check_force_sub(uid):
-        btns = [[Button.url("📢 اشترك في القناة", f"https://t.me/{FORCE_SUB_CHANNEL}")],
-                [Button.inline("✅ تحققت", b"check_sub")]]
-        await event.reply(f"""
+        btns = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 اشترك في القناة", url=f"https://t.me/{FORCE_SUB_CHANNEL}")],
+            [InlineKeyboardButton(text="✅ تحققت", callback_data="check_sub")]
+        ])
+        await message.reply(f"""
 ❌ **لازم تشترك في القناة عشان تستخدم البوت**
 
 📢 @{FORCE_SUB_CHANNEL}
 
 بعد الاشتراك دوس "تحققت" 👇
-""", buttons=btns)
+""", reply_markup=btns)
         return
 
     users_db[str(uid)] = {
-        "name": event.sender.first_name,
-        "username": event.sender.username,
+        "name": message.from_user.first_name,
+        "username": message.from_user.username,
         "joined": datetime.now().strftime('%Y-%m-%d %H:%M')
     }
     save_data()
 
     text = """
-🔍 **TG DNA Pro Max - UserBot Edition**
+🔍 **TG DNA Bot**
 
-✅ تاريخ الانشاء: دقة 100% أو تقريبي من ID
-✅ معلومات كاملة بدون قيود
+⚠️ **ملاحظة:** البوت العادي ميقدرش يجيب تاريخ الانشاء الحقيقي
+التاريخ الظاهر تقريبي من ID الحساب
 
-ابعت @username أو ID أو فورارد رسالة 👇
+ابعت @username أو ID 👇
 """
-    await event.reply(text, buttons=main_menu(uid))
+    await message.reply(text, reply_markup=main_menu(uid))
 
-@bot.on(events.NewMessage(pattern=r'^@?\w+$|^t\.me/\w+$|^\d+$'))
-async def get_info(event):
-    uid = event.sender_id
+@dp.message(F.text.regexp(r'^@?\w+$|^t\.me/\w+$|^\d+$'))
+async def get_info(message: types.Message):
+    uid = message.from_user.id
     if uid in blocked_users: return
 
     if not await check_force_sub(uid):
-        btns = [[Button.url("📢 اشترك في القناة", f"https://t.me/{FORCE_SUB_CHANNEL}")],
-                [Button.inline("✅ تحققت", b"check_sub")]]
-        await event.reply(f"❌ **اشترك الأول**\n\n📢 @{FORCE_SUB_CHANNEL}", buttons=btns)
+        btns = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 اشترك في القناة", url=f"https://t.me/{FORCE_SUB_CHANNEL}")],
+            [InlineKeyboardButton(text="✅ تحققت", callback_data="check_sub")]
+        ])
+        await message.reply(f"❌ **اشترك الأول**\n\n📢 @{FORCE_SUB_CHANNEL}", reply_markup=btns)
         return
 
     stats["total_requests"] += 1
     stats["today_requests"] += 1
     save_data()
 
-    text = event.raw_text.strip()
+    text = message.text.strip()
     if text.startswith('t.me/'):
         username = text.split('/')[-1]
     elif text.startswith('@'):
@@ -169,126 +178,62 @@ async def get_info(event):
     else:
         username = text
 
-    msg = await event.reply("⏳ **جاري التحليل...**")
+    msg = await message.reply("⏳ **جاري التحليل...**")
 
     try:
-        entity = await bot.get_entity(username)
-        if isinstance(entity, User):
-            full = await bot(GetFullUserRequest(entity))
-            user = full.users[0]
+        chat = await bot.get_chat(username)
+        
+        estimated_date = estimate_creation_from_id(chat.id)
+        created = estimated_date.strftime('%Y-%m')
+        age = calculate_age(estimated_date)
 
-            # التاريخ الحقيقي أو التقريبي
-            if hasattr(user, 'date') and user.date:
-                created = user.date.strftime('%Y-%m-%d %H:%M:%S UTC')
-                age, total_days = calculate_age(user.date)
-                accuracy = "✅ دقة 100%"
-            else:
-                estimated_date = estimate_creation_from_id(user.id)
-                created = estimated_date.strftime('%Y-%m')
-                age, total_days = calculate_age(estimated_date)
-                accuracy = "⚠️ تقريبي من ID"
-
-            dc_id = user.photo.dc_id if user.photo else "None"
-            premium = "Active 💎" if user.premium else "Inactive"
-            verified = "Yes ✅" if user.verified else "No"
-            status = get_status_detailed(user)
-            phone = f"`+{user.phone}`" if user.phone else "Hidden 🔒"
-            scam = "Yes ⚠️" if user.scam else "No"
-            fake = "Yes ⚠️" if user.fake else "No"
-            restricted = "Yes 🔴" if user.restricted else "No"
-            bot_flag = "Yes 🤖" if user.bot else "No"
-
-            try:
-                photos = await bot(GetUserPhotosRequest(user_id=user.id, offset=0, max_id=0, limit=100))
-                photos_count = photos.count
-                photos_status = "Set" if photos_count > 0 else "None"
-            except:
-                photos_count = 0
-                photos_status = "None"
-
-            try:
-                common = await bot(GetCommonChatsRequest(user_id=user.id, max_id=0, limit=100))
-                common_count = len(common.chats)
-            except:
-                common_count = 0
-
+        if chat.type == 'private':
             info_msg = f"""
-**👤 User Information** {accuracy}
+**👤 User Information** ⚠️ تقريبي من ID
 
-- **ID:** `{user.id}` - {len(str(user.id))} Digits
-- **Name:** {user.first_name or ''} {user.last_name or ''}
-- **Username:** @{user.username or 'None'}
-- **Phone:** {phone}
-- **DC:** {dc_id}
-- **Created:** {created}
-- **Premium:** {premium}
-- **Date:** {datetime.now().strftime('%Y-%m-%d US %H:%M')}
-- **Photos:** {photos_status}
-- **Scam Label:** {scam}
-- **Fake Label:** {fake}
-- **Paid Message:** No
-- **Account Age:** {age.split()[0] if age!= "Unknown" else "Unknown"}
-- **Verified:** {verified}
-- **Status:** {status}
-- **Common Chats:** {common_count}
-- **Restricted:** {restricted} | **Bot:** {bot_flag}
+- **ID:** `{chat.id}` - {len(str(chat.id))} Digits
+- **Name:** {chat.first_name or ''} {chat.last_name or ''}
+- **Username:** @{chat.username or 'None'}
+- **Created:** {created} ⚠️ تقريبي
+- **Account Age:** {age}
+- **Bio:** {chat.bio[:300] if chat.bio else 'None'}
 
-**Bio:** {full.full_user.about[:300] if full.full_user.about else 'None'}
+⚠️ **البوت العادي ميقدرش يجيب:**
+التاريخ الحقيقي، الرقم، Common Chats، Owner Groups
 """
-            btns = [
-                [Button.inline("📦 Owner Groups", f"og_{user.id}".encode())],
-                [Button.inline("📢 Owner Channels", f"oc_{user.id}".encode())],
-                [Button.inline("🔗 Common Chats", f"cc_{user.id}".encode())],
-                [Button.inline("🔙 Back", b"back")]
-            ]
-            await msg.edit(info_msg, buttons=btns)
-
-        elif isinstance(entity, Channel):
-            full = await bot(GetFullChannelRequest(entity))
-            channel = full.chats[0]
-
-            if hasattr(channel, 'date') and channel.date:
-                created = channel.date.strftime('%Y-%m-%d %H:%M:%S UTC')
-            else:
-                estimated_date = estimate_creation_from_id(channel.id)
-                created = estimated_date.strftime('%Y-%m ⚠️ تقريبي')
-
+        else:
             info_msg = f"""
 **📢 Channel/Group Information**
 
-- **ID:** `{channel.id}`
-- **Title:** {channel.title}
-- **Username:** @{channel.username or 'None'}
-- **Type:** {'Channel 📢' if channel.broadcast else 'Group 👥'}
-- **Members:** {full.full_chat.participants_count or 'Hidden'}
-- **DC:** {channel.photo.dc_id if channel.photo else 'None'}
-- **Created:** {created}
-- **Verified:** {'Yes ✅' if channel.verified else 'No'}
-- **Scam:** {'Yes ⚠️' if channel.scam else 'No'}
-
-**About:** {full.full_chat.about[:400] or 'None'}
+- **ID:** `{chat.id}`
+- **Title:** {chat.title}
+- **Username:** @{chat.username or 'None'}
+- **Type:** {chat.type}
+- **Members:** {await bot.get_chat_member_count(chat.id)}
+- **Created:** {created} ⚠️ تقريبي
+- **Description:** {chat.description[:300] if chat.description else 'None'}
 """
-            await msg.edit(info_msg, buttons=[[Button.inline("🔙 Back", b"back")]])
+        await msg.edit_text(info_msg)
 
     except Exception as e:
-        await msg.edit(f"❌ **خطأ:**\n\n{str(e)}")
+        await msg.edit_text(f"❌ **خطأ:**\n\n{str(e)}")
 
-@bot.on(events.CallbackQuery)
-async def callback(event):
-    uid = event.sender_id
-    data = event.data.decode()
+@dp.callback_query()
+async def callback(call: types.CallbackQuery):
+    uid = call.from_user.id
+    data = call.data
 
     if data == "check_sub":
         if await check_force_sub(uid):
-            await event.edit("✅ **تم التحقق بنجاح**\n\nابعت @username أو ID أو فورارد رسالة 👇", buttons=main_menu(uid))
+            await call.message.edit_text("✅ **تم التحقق بنجاح**\n\nابعت @username أو ID 👇", reply_markup=main_menu(uid))
         else:
-            await event.answer("❌ لسه مشتركتش في القناة", alert=True)
+            await call.answer("❌ لسه مشتركتش في القناة", show_alert=True)
 
     elif data == "admin_panel":
         if uid!= ADMIN_ID:
-            await event.answer("❌ انت مش المطور", alert=True)
+            await call.answer("❌ انت مش المطور", show_alert=True)
             return
-        await event.edit("⚙️ **Developer Panel**\n\nاختار اجراء:", buttons=admin_panel_menu())
+        await call.message.edit_text("⚙️ **Developer Panel**", reply_markup=admin_panel_menu())
 
     elif data == "stats":
         if uid!= ADMIN_ID: return
@@ -300,91 +245,16 @@ async def callback(event):
 📅 طلبات اليوم: `{stats['today_requests']}`
 🚫 المحظورين: `{len(blocked_users)}`
 📢 قناة الاشتراك: `@{FORCE_SUB_CHANNEL or 'None'}`
-⏰ التاريخ: `{datetime.now().strftime('%Y-%m-%d %H:%M')}`
-🔐 النوع: UserBot
 """
-        await event.edit(text, buttons=[[Button.inline("🔙 رجوع", b"admin_panel")]])
-
-    elif data == "change_channel":
-        if uid!= ADMIN_ID: return
-        await event.edit(f"📢 **قناة الاشتراك الحالية:** @{FORCE_SUB_CHANNEL or 'None'}\n\nابعت يوزر القناة الجديدة بدون @\n\nاكتب /cancel للالغاء")
-        bot.add_event_handler(change_channel_handler, events.NewMessage(from_users=ADMIN_ID))
+        await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 رجوع", callback_data="admin_panel")]
+        ]))
 
     elif data == "back":
-        await event.edit("🔍 **TG DNA Pro Max**\n\nابعت يوزر أو ايدي أو فورارد", buttons=main_menu(uid))
-
-    elif data == "users_list":
-        if uid!= ADMIN_ID: return
-        text = "👥 **آخر 20 مستخدم:**\n\n"
-        for i, (user_id, info) in enumerate(list(users_db.items())[-20:], 1):
-            text += f"{i}. {info['name']} - @{info.get('username', 'None')} - `{user_id}`\n"
-        await event.edit(text[:4000], buttons=[[Button.inline("🔙 رجوع", b"admin_panel")]])
-
-    elif data == "broadcast":
-        if uid!= ADMIN_ID: return
-        await event.edit("📢 **ارسل الرسالة للكل:**\n\nاكتب /cancel للالغاء")
-        bot.add_event_handler(broadcast_handler, events.NewMessage(from_users=ADMIN_ID))
-
-    elif data == "ban":
-        if uid!= ADMIN_ID: return
-        await event.edit("🚫 **ارسل ايدي المستخدم للحظر/فك الحظر:**\n\nاكتب /cancel للالغاء")
-        bot.add_event_handler(ban_handler, events.NewMessage(from_users=ADMIN_ID))
-
-    elif data == "restart":
-        if uid!= ADMIN_ID: return
-        await event.edit("♻️ **جاري اعادة التشغيل...**")
-        os._exit(0)
-
-async def change_channel_handler(event):
-    global FORCE_SUB_CHANNEL
-    if event.raw_text == '/cancel':
-        await event.reply("❌ تم الالغاء")
-        bot.remove_event_handler(change_channel_handler)
-        return
-    FORCE_SUB_CHANNEL = event.raw_text.replace('@', '')
-    await event.reply(f"✅ **تم تغيير قناة الاشتراك إلى:** @{FORCE_SUB_CHANNEL}\n\nاعمل Redeploy عشان التغيير يتثبت")
-    bot.remove_event_handler(change_channel_handler)
-
-async def broadcast_handler(event):
-    if event.raw_text == '/cancel':
-        await event.reply("❌ تم الالغاء")
-        bot.remove_event_handler(broadcast_handler)
-        return
-    msg = event.raw_text
-    sent = 0
-    failed = 0
-    status = await event.reply("⏳ جاري الارسال...")
-    for user_id in users_db.keys():
-        try:
-            await bot.send_message(int(user_id), f"📢 **رسالة من المطور:**\n\n{msg}")
-            sent += 1
-            await asyncio.sleep(0.3)
-        except: failed += 1
-    await status.edit(f"✅ **تم الارسال**\n\nنجح: {sent}\nفشل: {failed}")
-    bot.remove_event_handler(broadcast_handler)
-
-async def ban_handler(event):
-    if event.raw_text == '/cancel':
-        await event.reply("❌ تم الالغاء")
-        bot.remove_event_handler(ban_handler)
-        return
-    try:
-        user_id = int(event.raw_text)
-        if user_id in blocked_users:
-            blocked_users.remove(user_id)
-            await event.reply(f"✅ تم فك حظر `{user_id}`")
-        else:
-            blocked_users.add(user_id)
-            await event.reply(f"✅ تم حظر `{user_id}`")
-        save_data()
-    except:
-        await event.reply("❌ ايدي غلط")
-    bot.remove_event_handler(ban_handler)
+        await call.message.edit_text("🔍 **TG DNA Bot**\n\nابعت يوزر أو ايدي", reply_markup=main_menu(uid))
 
 async def main():
-    await bot.start()
-    print("✅ TG DNA UserBot شغال")
-    await bot.run_until_disconnected()
+    await dp.start_polling(bot)
 
 if __name__ == '__main__':
     asyncio.run(main())
