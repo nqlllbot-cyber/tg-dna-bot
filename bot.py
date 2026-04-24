@@ -27,11 +27,15 @@ API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
 DEVELOPER_USERNAME = "Devazf"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
-ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key().decode())
+ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
+if not ENCRYPTION_KEY:
+    ENCRYPTION_KEY = Fernet.generate_key()
+    print(f"⚠️ Generated new key: {ENCRYPTION_KEY.decode()}")
+    print("⚠️ احفظ المفتاح ده في Railway Variables عشان الجلسات متضيعش")
+else:
+    ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
-cipher = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY)
+cipher = Fernet(ENCRYPTION_KEY)
 scheduler = AsyncIOScheduler()
 
 def init_db():
