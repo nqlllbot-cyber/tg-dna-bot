@@ -18,7 +18,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.exceptions import TelegramBadRequest
 
-====== المتغيرات - عدل دول ======
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 DEVELOPER_ID = ADMIN_ID
@@ -30,8 +29,6 @@ FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-====== قاعدة البيانات ======
-def init_db():
     conn = sqlite3.connect('bot_data.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users
