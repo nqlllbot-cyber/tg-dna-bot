@@ -1,9 +1,3 @@
-تمام 🌚 خليت كل الجلسات تظهر كـ `كود` مش Bold عشان تتاخد نسخ بسهولة
-
-*التعديل:*
-بدل `parse_mode="Markdown"` استخدمت تنسيق تليجرام العادي + ``` للكود
-
-*الكود الكامل محدث:*
 import asyncio
 import os
 import json
@@ -30,7 +24,7 @@ ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 DEVELOPER_ID = ADMIN_ID
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
-DEVELOPER_USERNAME = "YourUsername"
+DEVELOPER_USERNAME = "Devazf"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 
 bot = Bot(token=BOT_TOKEN)
