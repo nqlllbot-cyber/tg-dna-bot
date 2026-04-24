@@ -25,15 +25,16 @@ ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 DEVELOPER_ID = ADMIN_ID
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
-DEVELOPER_USERNAME = "Devazf"
+DEVELOPER_USERNAME = "Devazt"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if not ENCRYPTION_KEY:
     ENCRYPTION_KEY = Fernet.generate_key()
     print(f"⚠️ Generated new key: {ENCRYPTION_KEY.decode()}")
-    print("⚠️ احفظ المفتاح ده في Railway Variables عشان الجلسات متضيعش")
 else:
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
+
+bot = Bot(token=BOT_TOKEN)  # ← ده اللي ناقص
 dp = Dispatcher(storage=MemoryStorage())
 cipher = Fernet(ENCRYPTION_KEY)
 scheduler = AsyncIOScheduler()
