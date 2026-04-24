@@ -909,7 +909,7 @@ async def ban_user_action(message: types.Message, state: FSMContext):
     if message.text == '/cancel':
         await message.reply("❌ تم الالغاء", reply_markup=main_menu(message.from_user.id))
         
-                await state.clear()
+        await state.clear()
     except:
         await message.reply("❌ ID غلط")
 
