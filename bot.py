@@ -29,7 +29,6 @@ SUPPORT_GROUP = "vaazef"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-====== قاعدة البيانات ======
 def init_db():
     conn = sqlite3.connect('bot_data.db')
     c = conn.cursor()
@@ -48,7 +47,6 @@ def init_db():
 
 init_db()
 
-====== دوال قاعدة البيانات ======
 def db_add_user(user_id, username, first_name):
     conn = sqlite3.connect('bot_data.db')
     c = conn.cursor()
