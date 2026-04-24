@@ -17,18 +17,21 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.exceptions import TelegramBadRequest
-    
+
+# ====== المتغيرات - عدل دول ======
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
+DEVELOPER_ID = ADMIN_ID # المطور = الادمن
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
-DEVELOPER_USERNAME = "devazf"
+DEVELOPER_USERNAME = "Devazf"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 SUPPORT_GROUP = "vaazef"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+# ====== قاعدة البيانات ======
 def init_db():
     conn = sqlite3.connect('bot_data.db')
     c = conn.cursor()
@@ -196,7 +199,7 @@ async def start(message: types.Message):
     uid = message.from_user.id
 
     if db_is_banned(uid):
-        await message.reply("🚫 **انت محظور من استخدام البوت**\n\nتواصل مع المطور لفك الحظر")
+        await message.reply("🚫 انت محظور من استخدام البوت\n\nتواصل مع المطور لفك الحظر")
         return
 
     if not await check_force_sub(uid):
@@ -205,7 +208,7 @@ async def start(message: types.Message):
             [InlineKeyboardButton(text="✅ تحققت", callback_data="check_sub")]
         ])
         await message.reply(f"""
-❌ **لازم تشترك في القناة عشان تستخدم البوت**
+❌ لازم تشترك في القناة عشان تستخدم البوت
 
 📢 @{FORCE_SUB_CHANNEL}
 
@@ -217,11 +220,11 @@ async def start(message: types.Message):
     db_log(uid, "start")
 
     text = f"""
-🔐 **Session Extractor & Converter Pro v3.0**
+🔐 Session Extractor & Converter Pro v3.0
 
 اهلاً {message.from_user.first_name} 👋
 
-**الميزات المتقدمة:**
+الميزات المتقدمة:
 1️⃣ استخراج جلسة Telethon
 2️⃣ استخراج جلسة Pyrogram
 3️⃣ تحويل Telethon ↔️ Pyrogram
@@ -230,9 +233,9 @@ async def start(message: types.Message):
 6️⃣ حماية Rate Limit
 7️⃣ سجل عمليات كامل
 
-⚠️ **تحذير أمني:** لا تشارك جلستك مع أي حد أبداً
+⚠️ تحذير أمني: لا تشارك جلستك مع أي حد أبداً
 
-**الدعم:** @{SUPPORT_GROUP}
+الدعم: @{SUPPORT_GROUP}
 
 اختار من القايمة 👇
 """
@@ -245,9 +248,9 @@ async def extract_telethon(call: CallbackQuery, state: FSMContext):
         return
 
     await call.message.edit_text(
-        "📱 **استخراج جلسة Telethon**\n\n"
+        "📱 استخراج جلسة Telethon\n\n"
         "ابعت رقم تليفونك مع كود الدولة:\n"
-        "مثال: `+201234567890`\n\n"
+        "مثال: +201234567890\n\n"
         "⚠️ الرقم لازم يكون مربوط بحسابك\n"
         "⏱ الكود صالح لمدة 5 دقايق",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -272,13 +275,13 @@ async def get_phone_telethon(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "extract_telethon_start", phone)
 
         await message.reply(
-            "✅ **تم ارسال الكود على تليجرام**\n\n"
-            "ابعت الكود اللي وصلك كده: `12345`\n\n"
+            "✅ تم ارسال الكود على تليجرام\n\n"
+            "ابعت الكود اللي وصلك كده: 12345\n\n"
             "لو مجاش شوف الرسايل المحفوظة"
         )
         await state.set_state(SessionStates.waiting_code_telethon)
     except Exception as e:
-        await message.reply(f"❌ **خطأ:** {str(e)}")
+        await message.reply(f"❌ خطأ: {str(e)}")
         await state.clear()
 
 @dp.message(SessionStates.waiting_code_telethon)
@@ -304,24 +307,24 @@ async def get_code_telethon(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "extract_telethon_success", me.username)
 
         msg = await message.reply(f"""
-✅ **تم استخراج الجلسة بنجاح**
+✅ تم استخراج الجلسة بنجاح
 
-**الحساب:** @{me.username or 'None'}
-**الاسم:** {me.first_name}
-**ID:** `{me.id}`
-**الرقم:** `{phone}`
+الحساب: @{me.username or 'None'}
+الاسم: {me.first_name}
+ID: {me.id}
+الرقم: {phone}
 
-**STRING_SESSION:**
+STRING_SESSION:
 {string_session}
 
-⚠️ **تحذيرات مهمة:**
+⚠️ تحذيرات مهمة:
 1. احفظ الجلسة في مكان آمن
 2. لا تشاركها مع حد أبداً
 3. اللي ياخدها يتحكم في حسابك كامل
 4. الرسالة هتتمسح بعد 5 دقايق للأمان
 
 ✅ الجلسة شغالة 100%
-""", parse_mode="Markdown", reply_markup=main_menu(message.from_user.id))
+""", reply_markup=main_menu(message.from_user.id))
 
         await client.disconnect()
         del sessions_temp[message.from_user.id]
@@ -335,10 +338,10 @@ async def get_code_telethon(message: types.Message, state: FSMContext):
 
     except Exception as e:
         if "password" in str(e).lower() or "2fa" in str(e).lower():
-            await message.reply("🔒 **حسابك عليه تحقق بخطوتين**\n\nابعت الباسورد:")
+            await message.reply("🔒 حسابك عليه تحقق بخطوتين\n\nابعت الباسورد:")
             await state.set_state(SessionStates.waiting_password_telethon)
         else:
-            await message.reply(f"❌ **خطأ:** {str(e)}")
+            await message.reply(f"❌ خطأ: {str(e)}")
             await client.disconnect()
             await state.clear()
 
@@ -362,16 +365,16 @@ async def get_password_telethon(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "extract_telethon_success", me.username)
 
         msg = await message.reply(f"""
-✅ **تم استخراج الجلسة بنجاح**
+✅ تم استخراج الجلسة بنجاح
 
-**الحساب:** @{me.username or 'None'}
-**ID:** `{me.id}`
+الحساب: @{me.username or 'None'}
+ID: {me.id}
 
-**STRING_SESSION:**
+STRING_SESSION:
 {string_session}
 
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
-""", parse_mode="Markdown", reply_markup=main_menu(message.from_user.id))
+""", reply_markup=main_menu(message.from_user.id))
 
         await client.disconnect()
         del sessions_temp[message.from_user.id]
@@ -394,9 +397,9 @@ async def extract_pyro(call: CallbackQuery, state: FSMContext):
         return
 
     await call.message.edit_text(
-        "📱 **استخراج جلسة Pyrogram**\n\n"
+        "📱 استخراج جلسة Pyrogram\n\n"
         "ابعت رقم تليفونك مع كود الدولة:\n"
-        "مثال: `+201234567890`",
+        "مثال: +201234567890",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]
         ])
@@ -418,10 +421,10 @@ async def get_phone_pyro(message: types.Message, state: FSMContext):
         sessions_temp[message.from_user.id] = {"client": client, "phone_hash": sent.phone_code_hash}
         db_log(message.from_user.id, "extract_pyro_start", phone)
 
-        await message.reply("✅ **تم ارسال الكود**\n\nابعت الكود: `12345`")
+        await message.reply("✅ تم ارسال الكود\n\nابعت الكود: 12345")
         await state.set_state(SessionStates.waiting_code_pyro)
     except Exception as e:
-        await message.reply(f"❌ **خطأ:** {str(e)}")
+        await message.reply(f"❌ خطأ: {str(e)}")
         await state.clear()
 
 @dp.message(SessionStates.waiting_code_pyro)
@@ -447,16 +450,16 @@ async def get_code_pyro(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "extract_pyro_success", me.username)
 
         msg = await message.reply(f"""
-✅ **تم استخراج جلسة Pyrogram بنجاح**
+✅ تم استخراج جلسة Pyrogram بنجاح
 
-**الحساب:** @{me.username or 'None'}
-**ID:** `{me.id}`
+الحساب: @{me.username or 'None'}
+ID: {me.id}
 
-**PYROGRAM_SESSION:**
+PYROGRAM_SESSION:
 {string_session}
 
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
-""", parse_mode="Markdown", reply_markup=main_menu(message.from_user.id))
+""", reply_markup=main_menu(message.from_user.id))
 
         await client.disconnect()
         del sessions_temp[message.from_user.id]
@@ -469,10 +472,10 @@ async def get_code_pyro(message: types.Message, state: FSMContext):
 
     except Exception as e:
         if "password" in str(e).lower():
-            await message.reply("🔒 **حسابك عليه تحقق بخطوتين**\n\nابعت الباسورد:")
+            await message.reply("🔒 حسابك عليه تحقق بخطوتين\n\nابعت الباسورد:")
             await state.set_state(SessionStates.waiting_password_pyro)
         else:
-            await message.reply(f"❌ **خطأ:** {str(e)}")
+            await message.reply(f"❌ خطأ: {str(e)}")
             await client.disconnect()
             await state.clear()
 
@@ -496,16 +499,16 @@ async def get_password_pyro(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "extract_pyro_success", me.username)
 
         msg = await message.reply(f"""
-✅ **تم استخراج جلسة Pyrogram بنجاح**
+✅ تم استخراج جلسة Pyrogram بنجاح
 
-**الحساب:** @{me.username or 'None'}
-**ID:** `{me.id}`
+الحساب: @{me.username or 'None'}
+ID: {me.id}
 
-**PYROGRAM_SESSION:**
+PYROGRAM_SESSION:
 {string_session}
 
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
-""", parse_mode="Markdown", reply_markup=main_menu(message.from_user.id))
+""", reply_markup=main_menu(message.from_user.id))
 
         await client.disconnect()
         del sessions_temp[message.from_user.id]
@@ -528,7 +531,7 @@ async def tele_to_pyro(call: CallbackQuery, state: FSMContext):
         return
 
     await call.message.edit_text(
-        "🔄 **تحويل Telethon → Pyrogram**\n\n"
+        "🔄 تحويل Telethon → Pyrogram\n\n"
         "ابعت الـ STRING_SESSION بتاع تليثون:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]
@@ -549,17 +552,17 @@ async def convert_tele_to_pyro(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "convert_tele_to_pyro")
 
         msg = await message.reply(f"""
-✅ **تم التحويل بنجاح**
+✅ تم التحويل بنجاح
 
-**Pyrogram Session:**
+Pyrogram Session:
 {pyro_string}
 
-**Telethon Session الأصلي:**
+Telethon Session الأصلي:
 {tele_string}
 
 ✅ الاتنين شغالين
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
-""", parse_mode="Markdown", reply_markup=main_menu(message.from_user.id))
+""", reply_markup=main_menu(message.from_user.id))
         await state.clear()
 
         await asyncio.sleep(300)
@@ -568,7 +571,7 @@ async def convert_tele_to_pyro(message: types.Message, state: FSMContext):
         except: pass
 
     except Exception as e:
-        await message.reply(f"❌ **سترنج غلط:** {str(e)}")
+        await message.reply(f"❌ سترنج غلط: {str(e)}")
         await state.clear()
 
 @dp.callback_query(F.data == "pyro_to_tele")
@@ -578,7 +581,7 @@ async def pyro_to_tele(call: CallbackQuery, state: FSMContext):
         return
 
     await call.message.edit_text(
-        "🔄 **تحويل Pyrogram → Telethon**\n\n"
+        "🔄 تحويل Pyrogram → Telethon\n\n"
         "ابعت الـ SESSION_STRING بتاع بايوجرام:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]
@@ -603,17 +606,17 @@ async def convert_pyro_to_tele(message: types.Message, state: FSMContext):
         db_log(message.from_user.id, "convert_pyro_to_tele")
 
         msg = await message.reply(f"""
-✅ **تم التحويل بنجاح**
+✅ تم التحويل بنجاح
 
-**Telethon Session:**
+Telethon Session:
 {tele_string}
 
-**Pyrogram Session الأصلي:**
+Pyrogram Session الأصلي:
 {pyro_string}
 
 ✅ الاتنين شغالين
 ⚠️ الرسالة هتتمسح بعد 5 دقايق
-""", parse_mode="Markdown", reply_markup=main_menu(message.from_user.id))
+""", reply_markup=main_menu(message.from_user.id))
         await state.clear()
 
         await asyncio.sleep(300)
@@ -622,7 +625,7 @@ async def convert_pyro_to_tele(message: types.Message, state: FSMContext):
         except: pass
 
     except Exception as e:
-        await message.reply(f"❌ **سترنج غلط:** {str(e)}")
+        await message.reply(f"❌ سترنج غلط: {str(e)}")
         await state.clear()
 
 @dp.callback_query(F.data == "check_session")
@@ -633,11 +636,11 @@ async def check_session_menu(call: CallbackQuery):
         InlineKeyboardButton(text="📱 فحص بايوجرام", callback_data="check_pyro")
     )
     builder.row(InlineKeyboardButton(text="🔙 رجوع", callback_data="back"))
-    await call.message.edit_text("🔍 **فحص صلاحية الجلسة**\n\nاختار نوع الجلسة:", reply_markup=builder.as_markup())
+    await call.message.edit_text("🔍 فحص صلاحية الجلسة\n\nاختار نوع الجلسة:", reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data == "check_tele")
 async def check_tele_start(call: CallbackQuery, state: FSMContext):
-    await call.message.edit_text("🔍 **فحص جلسة Telethon**\n\nابعت الـ STRING_SESSION:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]]))
+    await call.message.edit_text("🔍 فحص جلسة Telethon\n\nابعت الـ STRING_SESSION:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]]))
     await state.set_state(SessionStates.waiting_check_tele)
 
 @dp.message(SessionStates.waiting_check_tele)
@@ -651,28 +654,28 @@ async def check_tele_session(message: types.Message, state: FSMContext):
         if await client.is_user_authorized():
             me = await client.get_me()
             await message.reply(f"""
-✅ **الجلسة شغالة 100%**
+✅ الجلسة شغالة 100%
 
-**الحساب:** @{me.username or 'None'}
-**الاسم:** {me.first_name}
-**ID:** `{me.id}`
-**الرقم:** `{me.phone or 'مخفي'}`
+الحساب: @{me.username or 'None'}
+الاسم: {me.first_name}
+ID: {me.id}
+الرقم: {me.phone or 'مخفي'}
 
-**الحالة:** نشطة ✅
+الحالة: نشطة ✅
 """, reply_markup=main_menu(message.from_user.id))
             db_log(message.from_user.id, "check_session_tele_success")
         else:
-            await message.reply("❌ **الجلسة منتهية أو غلط**")
+            await message.reply("❌ الجلسة منتهية أو غلط")
 
         await client.disconnect()
         await state.clear()
     except Exception as e:
-        await message.reply(f"❌ **الجلسة غلط:** {str(e)}")
+        await message.reply(f"❌ الجلسة غلط: {str(e)}")
         await state.clear()
 
 @dp.callback_query(F.data == "check_pyro")
 async def check_pyro_start(call: CallbackQuery, state: FSMContext):
-    await call.message.edit_text("🔍 **فحص جلسة Pyrogram**\n\nابعت الـ SESSION_STRING:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]]))
+    await call.message.edit_text("🔍 فحص جلسة Pyrogram\n\nابعت الـ SESSION_STRING:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 الغاء", callback_data="back")]]))
     await state.set_state(SessionStates.waiting_check_pyro)
 
 @dp.message(SessionStates.waiting_check_pyro)
@@ -684,37 +687,37 @@ async def check_pyro_session(message: types.Message, state: FSMContext):
         await client.connect()
         me = await client.get_me()
         await message.reply(f"""
-✅ **الجلسة شغالة 100%**
+✅ الجلسة شغالة 100%
 
-**الحساب:** @{me.username or 'None'}
-**الاسم:** {me.first_name}
-**ID:** `{me.id}`
+الحساب: @{me.username or 'None'}
+الاسم: {me.first_name}
+ID: {me.id}
 
-**الحالة:** نشطة ✅
+الحالة: نشطة ✅
 """, reply_markup=main_menu(message.from_user.id))
         db_log(message.from_user.id, "check_session_pyro_success")
         await client.disconnect()
         await state.clear()
     except Exception as e:
-        await message.reply(f"❌ **الجلسة غلط:** {str(e)}")
+        await message.reply(f"❌ الجلسة غلط: {str(e)}")
         await state.clear()
 
 @dp.callback_query(F.data == "developer_info")
 async def developer_info(call: CallbackQuery):
     text = f"""
-👨‍💻 **Developer Info**
+👨‍💻 Developer Info
 
-**المطور:** @{DEVELOPER_USERNAME}
-**ID:** `{DEVELOPER_ID}`
-**الدعم:** @{SUPPORT_GROUP}
+المطور: @{DEVELOPER_USERNAME}
+ID: {DEVELOPER_ID}
+الدعم: @{SUPPORT_GROUP}
 
-**ملاحظات مهمة:**
+ملاحظات مهمة:
 ⚠️ البوت مجاني 100%
 ⚠️ لا تشارك جلستك مع أي حد حتى المطور
 ⚠️ المطور غير مسؤول عن سوء الاستخدام
 ⚠️ استخدامك للبوت على مسؤوليتك
 
-**للتبليغ عن مشكلة أو اقتراح:** راسل المطور
+للتبليغ عن مشكلة أو اقتراح: راسل المطور
 """
     btns = InlineKeyboardBuilder()
     btns.row(InlineKeyboardButton(text="📩 راسل المطور", url=f"https://t.me/{DEVELOPER_USERNAME}"))
@@ -728,24 +731,24 @@ async def admin_panel(call: CallbackQuery):
     if call.from_user.id!= ADMIN_ID:
         await call.answer("❌ انت مش المطور", show_alert=True)
         return
-    await call.message.edit_text("⚙️ **لوحة تحكم المطور**\n\nاختار اجراء:", reply_markup=admin_panel_menu())
+    await call.message.edit_text("⚙️ لوحة تحكم المطور\n\nاختار اجراء:", reply_markup=admin_panel_menu())
 
 @dp.callback_query(F.data == "stats")
 async def stats(call: CallbackQuery):
     if call.from_user.id!= ADMIN_ID: return
     total_users, extractions, conversions, banned = db_get_stats()
     text = f"""
-📊 **احصائيات البوت**
+📊 احصائيات البوت
 
-👥 **المستخدمين:** `{total_users}`
-📱 **الاستخراجات:** `{extractions}`
-🔄 **التحويلات:** `{conversions}`
-🚫 **المحظورين:** `{banned}`
-⏰ **التاريخ:** `{datetime.now().strftime('%Y-%m-%d %H:%M')}`
+👥 المستخدمين: {total_users}
+📱 الاستخراجات: {extractions}
+🔄 التحويلات: {conversions}
+🚫 المحظورين: {banned}
+⏰ التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-**السيرفر:** Railway
-**الاصدار:** Pro v3.0
-**الحالة:** ✅ يعمل
+السيرفر: Railway
+الاصدار: Pro v3.0
+الحالة: ✅ يعمل
 """
     await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="admin_panel")]
@@ -760,10 +763,10 @@ async def users_list(call: CallbackQuery):
     users = c.fetchall()
     conn.close()
 
-    text = "👥 **آخر 20 مستخدم:**\n\n"
+    text = "👥 آخر 20 مستخدم:\n\n"
     for u in users:
         status = "🚫" if u[3] else "✅"
-        text += f"{status} `{u[0]}` - @{u[1] or 'None'} - {u[2]}\n"
+        text += f"{status} {u[0]} - @{u[1] or 'None'} - {u[2]}\n"
 
     await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="admin_panel")]
@@ -774,9 +777,9 @@ async def show_logs(call: CallbackQuery):
     if call.from_user.id!= ADMIN_ID: return
     logs = db_get_logs(15)
 
-    text = "📋 **آخر 15 عملية:**\n\n"
+    text = "📋 آخر 15 عملية:\n\n"
     for log in logs:
-        text += f"`{log[0]}` - `{log[1]}` - {log[2]} - {log[4]}\n"
+        text += f"{log[0]} - {log[1]} - {log[2]} - {log[4]}\n"
 
     await call.message.edit_text(text[:4000], reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="admin_panel")]
@@ -786,7 +789,7 @@ async def show_logs(call: CallbackQuery):
 async def broadcast_start(call: CallbackQuery, state: FSMContext):
     if call.from_user.id!= ADMIN_ID: return
     await call.message.edit_text(
-        "📢 **رسالة جماعية**\n\n"
+        "📢 رسالة جماعية\n\n"
         "ابعت الرسالة اللي عايز تبعتها لكل اليوزرز:\n\n"
         "اكتب /cancel للالغاء",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -810,18 +813,18 @@ async def broadcast_send(message: types.Message, state: FSMContext):
 
     for user_id in users:
         try:
-            await bot.send_message(user_id, f"📢 **رسالة من المطور:**\n\n{message.text}")
+            await bot.send_message(user_id, f"📢 رسالة من المطور:\n\n{message.text}")
             sent += 1
             await asyncio.sleep(0.05)
         except:
             failed += 1
 
     await status.edit_text(f"""
-✅ **تم الارسال**
+✅ تم الارسال
 
-**نجح:** {sent}
-**فشل:** {failed}
-**المجموع:** {len(users)}
+نجح: {sent}
+فشل: {failed}
+المجموع: {len(users)}
 """, reply_markup=main_menu(message.from_user.id))
     await state.clear()
 
@@ -829,7 +832,7 @@ async def broadcast_send(message: types.Message, state: FSMContext):
 async def ban_user_start(call: CallbackQuery, state: FSMContext):
     if call.from_user.id!= ADMIN_ID: return
     await call.message.edit_text(
-        "🚫 **حظر/فك حظر مستخدم**\n\n"
+        "🚫 حظر/فك حظر مستخدم\n\n"
         "ابعت ID المستخدم:\n\n"
         "اكتب /cancel للالغاء",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -849,10 +852,10 @@ async def ban_user_action(message: types.Message, state: FSMContext):
         user_id = int(message.text)
         if db_is_banned(user_id):
             db_unban_user(user_id)
-            await message.reply(f"✅ **تم فك حظر** `{user_id}`", reply_markup=main_menu(message.from_user.id))
+            await message.reply(f"✅ تم فك حظر {user_id}", reply_markup=main_menu(message.from_user.id))
         else:
             db_ban_user(user_id)
-            await message.reply(f"✅ **تم حظر** `{user_id}`", reply_markup=main_menu(message.from_user.id))
+            await message.reply(f"✅ تم حظر {user_id}", reply_markup=main_menu(message.from_user.id))
         await state.clear()
     except:
         await message.reply("❌ ID غلط")
@@ -860,13 +863,13 @@ async def ban_user_action(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "restart")
 async def restart_bot(call: CallbackQuery):
     if call.from_user.id!= ADMIN_ID: return
-    await call.message.edit_text("♻️ **جاري اعادة التشغيل...**")
+    await call.message.edit_text("♻️ جاري اعادة التشغيل...")
     os._exit(0)
 
 @dp.callback_query(F.data == "back")
 async def back(call: CallbackQuery):
     await call.message.edit_text(
-        "🔐 **Session Extractor & Converter Pro v3.0**\n\nاختار من القايمة 👇",
+        "🔐 Session Extractor & Converter Pro v3.0\n\nاختار من القايمة 👇",
         reply_markup=main_menu(call.from_user.id)
     )
 
@@ -874,7 +877,7 @@ async def back(call: CallbackQuery):
 async def check_sub(call: CallbackQuery):
     if await check_force_sub(call.from_user.id):
         await call.message.edit_text(
-            "✅ **تم التحقق بنجاح**\n\nاختار من القايمة 👇",
+            "✅ تم التحقق بنجاح\n\nاختار من القايمة 👇",
             reply_markup=main_menu(call.from_user.id)
         )
     else:
