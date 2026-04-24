@@ -25,7 +25,7 @@ ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
 DEVELOPER_ID = ADMIN_ID
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
-DEVELOPER_USERNAME = "Devazt"
+DEVELOPER_USERNAME = "Devazf"
 FORCE_SUB_CHANNEL = os.environ.get('FORCE_SUB_CHANNEL', '')
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if not ENCRYPTION_KEY:
