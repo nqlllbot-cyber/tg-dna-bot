@@ -102,19 +102,6 @@ def main_menu(uid):
         builder.row(InlineKeyboardButton(text="⚙️ Developer Panel", callback_data="admin_panel"))
     return builder.as_markup()
 
-def admin_panel_menu():
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="📊 الاحصائيات", callback_data="stats"),
-        InlineKeyboardButton(text="📢 رسالة جماعية", callback_data="broadcast")
-    )
-    builder.row(
-        InlineKeyboardButton(text="👥 المستخدمين", callback_data="users_list"),
-        InlineKeyboardButton(text="🚫 حظر/فك حظر", callback_data="ban")
-    )
-    builder.row(InlineKeyboardButton(text="🔙 رجوع", callback_data="back"))
-    return builder.as_markup()
-
 @dp.message(Command("start"))
 async def start(message: types.Message):
     uid = message.from_user.id
@@ -127,13 +114,7 @@ async def start(message: types.Message):
             [InlineKeyboardButton(text="📢 اشترك في القناة", url=f"https://t.me/{FORCE_SUB_CHANNEL}")],
             [InlineKeyboardButton(text="✅ تحققت", callback_data="check_sub")]
         ])
-        await message.reply(f"""
-❌ **لازم تشترك في القناة عشان تستخدم البوت**
-
-📢 @{FORCE_SUB_CHANNEL}
-
-بعد الاشتراك دوس "تحققت" 👇
-""", reply_markup=btns)
+        await message.reply(f"❌ **اشترك في القناة الأول**\n\n📢 @{FORCE_SUB_CHANNEL}", reply_markup=btns)
         return
 
     users_db[str(uid)] = {
@@ -146,8 +127,13 @@ async def start(message: types.Message):
     text = """
 🔍 **TG DNA Bot**
 
-⚠️ **ملاحظة:** البوت العادي ميقدرش يجيب تاريخ الانشاء الحقيقي
-التاريخ الظاهر تقريبي من ID الحساب
+⚠️ **تنبيه مهم:** البوت العادي ميقدرش يجيب معلومات أي يوزر
+لازم اليوزر يكلم البوت `/start` الأول أو يكون في جروب مع البوت
+
+**الحاجات اللي شغالة:**
+✅ معلوماتك انت بعد /start
+✅ القنوات والجروبات العامة
+✅ تخمين تاريخ الانشاء من ID
 
 ابعت @username أو ID 👇
 """
@@ -189,19 +175,19 @@ async def get_info(message: types.Message):
 
         if chat.type == 'private':
             info_msg = f"""
-**👤 User Information** ⚠️ تقريبي من ID
+**👤 User Information** ⚠️ تقريبي
 
 - **ID:** `{chat.id}` - {len(str(chat.id))} Digits
 - **Name:** {chat.first_name or ''} {chat.last_name or ''}
 - **Username:** @{chat.username or 'None'}
-- **Created:** {created} ⚠️ تقريبي
+- **Created:** {created} ⚠️ من ID
 - **Account Age:** {age}
 - **Bio:** {chat.bio[:300] if chat.bio else 'None'}
 
-⚠️ **البوت العادي ميقدرش يجيب:**
-التاريخ الحقيقي، الرقم، Common Chats، Owner Groups
+⚠️ **القيود:** البوت العادي ميقدرش يجيب التاريخ الحقيقي
 """
         else:
+            members = await bot.get_chat_member_count(chat.id)
             info_msg = f"""
 **📢 Channel/Group Information**
 
@@ -209,14 +195,29 @@ async def get_info(message: types.Message):
 - **Title:** {chat.title}
 - **Username:** @{chat.username or 'None'}
 - **Type:** {chat.type}
-- **Members:** {await bot.get_chat_member_count(chat.id)}
+- **Members:** {members}
 - **Created:** {created} ⚠️ تقريبي
 - **Description:** {chat.description[:300] if chat.description else 'None'}
 """
         await msg.edit_text(info_msg)
 
     except Exception as e:
-        await msg.edit_text(f"❌ **خطأ:**\n\n{str(e)}")
+        error_msg = str(e).lower()
+        if "chat not found" in error_msg:
+            await msg.edit_text(f"""
+❌ **مش لاقي اليوزر @{username}**
+
+**السبب:** البوت العادي ميقدرش يشوف يوزر إلا لو:
+1. اليوزر كلم البوت `/start` قبل كده
+2. اليوزر موجود مع البوت في جروب
+
+**الحل:** 
+- ابعت الـ ID الرقمي بدل اليوزرنيم
+- أو خلي @{username} يكلم البوت الأول
+- أو استخدم يوزربوت لو عايز تجيب أي يوزر
+""")
+        else:
+            await msg.edit_text(f"❌ **خطأ:**\n\n{str(e)}")
 
 @dp.callback_query()
 async def callback(call: types.CallbackQuery):
@@ -225,33 +226,9 @@ async def callback(call: types.CallbackQuery):
 
     if data == "check_sub":
         if await check_force_sub(uid):
-            await call.message.edit_text("✅ **تم التحقق بنجاح**\n\nابعت @username أو ID 👇", reply_markup=main_menu(uid))
+            await call.message.edit_text("✅ **تم التحقق**\n\nابعت @username أو ID 👇", reply_markup=main_menu(uid))
         else:
-            await call.answer("❌ لسه مشتركتش في القناة", show_alert=True)
-
-    elif data == "admin_panel":
-        if uid!= ADMIN_ID:
-            await call.answer("❌ انت مش المطور", show_alert=True)
-            return
-        await call.message.edit_text("⚙️ **Developer Panel**", reply_markup=admin_panel_menu())
-
-    elif data == "stats":
-        if uid!= ADMIN_ID: return
-        text = f"""
-📊 **احصائيات البوت**
-
-👥 المستخدمين: `{len(users_db)}`
-📈 اجمالي الطلبات: `{stats['total_requests']}`
-📅 طلبات اليوم: `{stats['today_requests']}`
-🚫 المحظورين: `{len(blocked_users)}`
-📢 قناة الاشتراك: `@{FORCE_SUB_CHANNEL or 'None'}`
-"""
-        await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 رجوع", callback_data="admin_panel")]
-        ]))
-
-    elif data == "back":
-        await call.message.edit_text("🔍 **TG DNA Bot**\n\nابعت يوزر أو ايدي", reply_markup=main_menu(uid))
+            await call.answer("❌ لسه مشتركتش", show_alert=True)
 
 async def main():
     await dp.start_polling(bot)
