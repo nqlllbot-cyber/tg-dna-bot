@@ -34,7 +34,7 @@ if not ENCRYPTION_KEY:
     print("⚠️ احفظ المفتاح ده في Railway Variables عشان الجلسات متضيعش")
 else:
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
-
+dp = Dispatcher(storage=MemoryStorage())
 cipher = Fernet(ENCRYPTION_KEY)
 scheduler = AsyncIOScheduler()
 
