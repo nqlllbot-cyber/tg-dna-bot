@@ -908,7 +908,17 @@ async def ban_user_start(call: CallbackQuery, state: FSMContext):
 async def ban_user_action(message: types.Message, state: FSMContext):
     if message.text == '/cancel':
         await message.reply("❌ تم الالغاء", reply_markup=main_menu(message.from_user.id))
-        
+        await state.clear()
+        return
+
+    try:
+        user_id = int(message.text)
+        if db_is_banned(user_id):
+            db_unban_user(user_id)
+            await message.reply(f"✅ تم فك حظر {user_id}", reply_markup=main_menu(message.from_user.id))
+        else:
+            db_ban_user(user_id)
+            await message.reply(f"✅ تم حظر {user_id}", reply_markup=main_menu(message.from_user.id))
         await state.clear()
     except:
         await message.reply("❌ ID غلط")
