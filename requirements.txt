@@ -1,6 +1,0 @@
-aiogram==3.15.0
-pyrogram==2.0.106
-telethon==1.36.0
-cryptography==42.0.5
-apscheduler==3.10.4
-tgcrypto==1.2.5
