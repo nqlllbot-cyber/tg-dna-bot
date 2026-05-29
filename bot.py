@@ -95,7 +95,7 @@ def get_user_data(uid):
     return db['users'][uid]
 
 def is_subscribed(uid):
-    if uid == ADMIN_ID:
+    if uid == ADMIN_IDS:
         return True
     user = get_user_data(uid)
     sub_end = user.get('sub_end')
@@ -182,12 +182,13 @@ def build_entities(saved_entities):
 def main_menu(uid):
     btns = [
         [Button.inline("📱 اضافة حساب", b"add_account")],
+        [Button.inline("📱 ادارة الحسابات", b"accounts_menu")],
         [Button.inline("⚙️ اعدادات النشر", b"pub_settings"), Button.inline("📊 تحليل النشر", b"analyze")],
         [Button.inline("🔄 تشغيل", b"start_pub"), Button.inline("⛔ ايقاف", b"stop_pub")],
         [Button.inline("✨ مميزات البوت", b"features"), Button.inline("💡 نصائح الحماية", b"tips")],
-        [Button.url("👨‍💻 المبرمج", DEVELOPER_LINK)]
+        [Button.inline("🛒 شراء بوت مماثل", b"buy_bot"), Button.url("👨‍💻 المبرمج", DEVELOPER_LINK)]
     ]
-    if uid == ADMIN_ID:
+    if uid == ADMIN_IDS:
         btns.insert(-1, [Button.inline("👑 لوحة المبرمج", b"admin")])
     return btns
 
@@ -767,13 +768,13 @@ async def callback(event):
         return
 
     elif data == 'admin':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         await safe_edit(event, "👑 **لوحة الادمن**", buttons=admin_menu())
         return
 
     elif data == 'gen_code':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         code = gen_code(30)
         await event.answer(f"✅ الكود اتنسخ في الرسالة", alert=True)
@@ -781,28 +782,28 @@ async def callback(event):
         return
 
     elif data == 'list_codes':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         codes_text = "\n".join([f"`{code}` - {days} يوم" for code, days in db['codes'].items()]) or "لا يوجد اكواد"
         await safe_edit(event, f"📋 **الاكواد المتاحة:**\n\n{codes_text}", buttons=[[Button.inline("🔙 رجوع", b"admin")]])
         return
 
     elif data == 'activate_vip':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         waiting_for[uid] = 'vip_activate'
         await safe_edit(event, "👤 **ابعت ID المستخدم + عدد الايام**\n\nمثال: 123456789 30\nيعني فعل 30 يوم", buttons=[[Button.inline("🔙 رجوع", b"admin")]])
         return
 
     elif data == 'deactivate_vip':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         waiting_for[uid] = 'vip_deactivate'
         await safe_edit(event, "👤 **ابعت ID المستخدم للالغاء**\n\nمثال: 123456789", buttons=[[Button.inline("🔙 رجوع", b"admin")]])
         return
 
     elif data == 'toggle_notifications':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         db['login_notifications'] = not db.get('login_notifications', True)
         save_db()
@@ -810,14 +811,14 @@ async def callback(event):
         return
 
     elif data == 'backup_sessions':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         backup_sessions()
         await event.answer("✅ تم عمل نسخة احتياطية لكل الجلسات", alert=True)
         return
 
     elif data == 'download_backup':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         try:
             with open(BACKUP_FILE, 'r', encoding='utf-8') as f:
@@ -828,7 +829,7 @@ async def callback(event):
         return
 
     elif data == 'users':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         users_list = []
         for user_id, user_data in db['users'].items():
@@ -841,7 +842,7 @@ async def callback(event):
         return
 
     elif data == 'admin_stats':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         total_users = len(db['users'])
         active_subs = sum(1 for u in db['users'].keys() if is_subscribed(int(u)))
@@ -856,7 +857,7 @@ async def callback(event):
         return
 
     elif data == 'broadcast':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         waiting_for[uid] = 'broadcast'
         await safe_edit(event, "📢 **ابعت رسالة الاذاعة:**", buttons=[[Button.inline("🔙 رجوع", b"admin")]])
@@ -888,7 +889,7 @@ async def handle_messages(event):
             await event.reply("❌ **كود غلط**")
 
     elif action == 'vip_activate':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         try:
             parts = text.strip().split()
@@ -908,7 +909,7 @@ async def handle_messages(event):
             await event.reply("❌ **صيغة غلط**\n\nالمثال الصحيح:\n`123456789 30`")
 
     elif action == 'vip_deactivate':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         try:
             target_id = text.strip()
@@ -926,7 +927,7 @@ async def handle_messages(event):
             await event.reply("❌ **ID غلط**")
 
     elif action == 'broadcast':
-        if uid!= ADMIN_ID:
+        if uid!= ADMIN_IDS:
             return
         msg_text = text.strip()
         count = 0
